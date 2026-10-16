@@ -35,8 +35,11 @@ jobs:
         with:
           node-version: 22
 
+      -       - uses: oven-sh/setup-bun@v2
+
       - name: Install
-        run: npm install --no-audit --no-fund
+        run: bun install
+        
 
       - name: Build
         env:
