@@ -1,0 +1,69 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore folders
+        run: |
+          for f in DOT_*; do [ -f "$f" ] && mv "$f" ".${f#DOT_}"; done
+          for f in *=*; do
+            [ -f "$f" ] || continue
+            p=$(echo "$f" | sed 's#=#/#g; s#/DOT_#/.#g')
+            mkdir -p "$(dirname "$p")"
+            mv "$f" "$p"
+          done
+          ls -A
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install
+        run: npm install --no-audit --no-fund
+
+      - name: Build
+        env:
+          VITE_BASE_PATH: /${{ github.event.repository.name }}/
+        run: |
+          set -a; . ./.env.example; set +a
+          npm run build:pages
+
+      - name: Prepare site folder
+        run: |
+          DIR=$(find dist .output -type f \( -name index.html -o -name _shell.html \) 2>/dev/null | head -1 | xargs -r dirname)
+          echo "Site folder: $DIR"
+          [ -f "$DIR/index.html" ] || cp "$DIR/_shell.html" "$DIR/index.html"
+          cp "$DIR/index.html" "$DIR/404.html"
+          touch "$DIR/.nojekyll"
+          echo "SITE_DIR=$DIR" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ env.SITE_DIR }}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
